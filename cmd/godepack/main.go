@@ -2,25 +2,42 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-// Directories and files to exclude when bundling
-var excludeDirs = []string{".git", "node_modules", "vendor", ".idea"}
-var excludeExtensions = []string{".png", ".jpg", ".jpeg", ".gif", ".bin", ".exe"}
+type Config struct {
+	ExcludeDirs       []string `json:"excludeDirs"`
+	ExcludeExtensions []string `json:"excludeExtensions"`
+}
 
-// Check if the path should be excluded
-func isExcluded(path string) bool {
-	for _, dir := range excludeDirs {
-		if strings.Contains(path, dir) {
-			return true
-		}
+func loadConfig(path string) (Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Config{}, err
 	}
-	for _, ext := range excludeExtensions {
-		if strings.HasSuffix(path, ext) {
+
+	var cfg Config
+	err = json.Unmarshal(data, &cfg)
+	return cfg, err
+}
+
+func isExcluded(path string, info os.FileInfo, cfg Config) bool {
+	if info.IsDir() {
+		for _, dir := range cfg.ExcludeDirs {
+			if info.Name() == dir {
+				return true
+			}
+		}
+		return false
+	}
+
+	ext := strings.ToLower(filepath.Ext(info.Name()))
+	for _, excludeExt := range cfg.ExcludeExtensions {
+		if ext == excludeExt {
 			return true
 		}
 	}
@@ -28,21 +45,35 @@ func isExcluded(path string) bool {
 }
 
 func main() {
-	outputFile, err := os.Create("repomix-output.txt")
+	cfg, err := loadConfig("config.json")
 	if err != nil {
-		fmt.Println("Error creating file:", err)
+		fmt.Println("Error loading configuration file:", err)
+		return
+	}
+
+	outputFile, err := os.Create("gode-packing.txt")
+	if err != nil {
+		fmt.Println("Error creating output file:", err)
 		return
 	}
 	defer outputFile.Close()
 
 	writer := bufio.NewWriter(outputFile)
 
-	filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		if info.IsDir() || isExcluded(path) {
+		// Perform exclusion check
+		if isExcluded(path, info, cfg) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		if info.IsDir() {
 			return nil
 		}
 
@@ -51,7 +82,6 @@ func main() {
 			return err
 		}
 
-		// Output with separator
 		separator := fmt.Sprintf("\n\n// ----- FILE: %s ----- //\n\n", path)
 		writer.WriteString(separator)
 		writer.Write(fileContent)
@@ -59,6 +89,11 @@ func main() {
 		return nil
 	})
 
+	if err != nil {
+		fmt.Println("An error occurred during processing:", err)
+		return
+	}
+
 	writer.Flush()
-	fmt.Println("Repository bundling completed: repomix-output.txt")
+	fmt.Println("Repository bundling completed: gode-packing.txt")
 }

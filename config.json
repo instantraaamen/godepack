@@ -1,0 +1,5 @@
+{
+    "excludeDirs": [".git", "node_modules", "vendor", ".idea"],
+    "excludeExtensions": [".png", ".jpg", ".jpeg", ".gif", ".bin", ".exe"]
+  }
+  
